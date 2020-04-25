@@ -23,6 +23,12 @@ int main(int argc, char **argv)
       }};
   args::Command interactive{
       commands, "viewer", "Run flag viewer", [&](args::Subparser &parser) {
+        args::ValueFlag<int32_t> flagWidth{parser, "fWidth",
+            "Width of cloth",
+            {"fw", "fWidth"}};
+        args::ValueFlag<int32_t> flagHeight{parser, "fHeight",
+            "Height of cloth",
+            {"fh", "fHeight"}};
         args::ValueFlag<std::string> lookat{parser, "lookat",
             "Look at parameters for the Camera with format "
             "eye_x,eye_y,eye_z,center_x,center_y,center_z,up_x,up_y,up_z",
@@ -37,10 +43,6 @@ int main(int argc, char **argv)
         args::ValueFlag<int32_t> imageHeight{parser, "height",
             "Height of window or output image if -b is specified",
             {"h", "height"}};
-        args::ValueFlag<std::string> output{parser, "output",
-            "Output path to render the image. If specified no window is shown. "
-            "Only png is supported.",
-            {"o", "output"}};
         parser.Parse();
 
         std::vector<float> lookatParams;
@@ -60,9 +62,11 @@ int main(int argc, char **argv)
         uint32_t width = imageWidth ? args::get(imageWidth) : 1280;
         uint32_t height = imageHeight ? args::get(imageHeight) : 720;
 
-        ViewerApplication app{fs::path{argv[0]}, width, height,
-            lookatParams, args::get(vertexShader), args::get(fragmentShader),
-            args::get(output)};
+        uint32_t fWidth = flagWidth ? args::get(flagWidth) : 50;
+        uint32_t fHeight = flagHeight ? args::get(flagHeight) : fWidth;
+
+        ViewerApplication app{fs::path{argv[0]}, width, height, fWidth, fHeight,
+            lookatParams, args::get(vertexShader), args::get(fragmentShader)};
         returnCode = app.run();
       }};
 

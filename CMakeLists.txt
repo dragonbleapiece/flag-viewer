@@ -12,7 +12,6 @@ set(IMGUI_DIR imgui-1.74)
 set(GLFW_DIR glfw-3.3.1)
 set(GLM_DIR glm-0.9.9.7)
 set(GLAD_DIR glad)
-set(TINYGLTF_DIR tinygltf-bcf2ce586ee8bf2a2a816afa6bfe2f8692ba6ac2)
 set(ARGS_DIR args-6.2.2)
 
 # Add GLFW subdirectory, set some options to OFF by default (the user can still enable them by modifying its CMakeCache.txt)
@@ -141,7 +140,6 @@ foreach(DIR ${APP_DIRECTORIES})
         third-party/${GLAD_DIR}/include
         third-party/${IMGUI_DIR}
         third-party/${IMGUI_DIR}/examples/
-        third-party/${TINYGLTF_DIR}/include
         third-party/${ARGS_DIR}
         lib/include
     )

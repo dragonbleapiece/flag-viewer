@@ -10,14 +10,13 @@
 
 #include "utils/cameras.hpp"
 
-#include <stb_image_write.h>
 #include "utils/images.hpp"
 
-// Each vertex attribute is identified by an index
-// What vertex attribute we use, and what are their index is defined by the vertex shader
-// we will use (more information later).
-// position, normal and texcoord is pretty standard for 3D applications
-const std::vector<std::string> ATTRIBUTES = {"POSITION", "NORMAL", "TEXCOORD_0"};
+struct ShapeVertex {
+    glm::vec3 position;
+    glm::vec3 normal;
+    glm::vec2 texCoords;
+};
 
 void keyCallback(
     GLFWwindow *window, int key, int scancode, int action, int mods)
@@ -33,6 +32,9 @@ int ViewerApplication::run()
   const auto glslProgram =
       compileProgram({m_ShadersRootPath / m_AppName / m_vertexShader,
           m_ShadersRootPath / m_AppName / m_fragmentShader});
+
+  // For the size of the flag | cloth
+  const float STEP = 0.5;
 
   const auto modelViewProjMatrixLocation =
       glGetUniformLocation(glslProgram.glId(), "uModelViewProjMatrix");
@@ -50,10 +52,8 @@ int ViewerApplication::run()
       glGetUniformLocation(glslProgram.glId(), "uLightIntensity");
 
 
-  float epsilon = 0.001f;
-  // check if the scene is flat
   glm::vec3 up = glm::vec3(0, 1, 0);
-  glm::vec3 eye = glm::vec3(0, 0, 100);
+  glm::vec3 eye = glm::vec3(0, 0, 30);
 
    // Build projection matrix
   auto maxDistance = 100.f;
@@ -84,9 +84,114 @@ int ViewerApplication::run()
   glm::vec3 lightDirection(1., 1., 1.);
   glm::vec3 lightIntensity(1., 1., 1.);
 
+  // Calculate vertices
+
+  std::vector<ShapeVertex> data;
+
+  for(size_t i = 0; i < m_nClothWidth; ++i) {
+    for(size_t j = 0; j < m_nClothHeight; ++j) {
+      ShapeVertex vertex;
+            
+      vertex.texCoords.x = float(i) / float(m_nClothWidth);
+      vertex.texCoords.y = float(j) / float(m_nClothHeight);
+
+      vertex.normal = glm::vec3(0, 0, 1);
+      
+      vertex.position = glm::vec3(i - float(m_nClothWidth) / 2., j - float(m_nClothHeight) / 2., 0.) * STEP;
+      
+      data.push_back(vertex);
+    }
+  }
+
+
+  // Store the indexes
+
+  std::vector<GLuint> indexes;
+
+  for(size_t i = 0; i < m_nClothWidth - 1; ++i) {
+    size_t offset = i * m_nClothHeight;
+    for(size_t j = 0; j < m_nClothHeight - 1; ++j) {
+        indexes.push_back(offset + j);
+        indexes.push_back(offset + j + 1);
+        indexes.push_back(offset + m_nClothHeight + j + 1);
+        indexes.push_back(offset + j);
+        indexes.push_back(offset + m_nClothHeight + j);
+        indexes.push_back(offset + m_nClothHeight + j + 1);
+    }
+  }
+
+  // Generate VAO
+  GLuint vao;
+  glGenVertexArrays(1, &vao);
+
+  // Bind VAO
+  glBindVertexArray(vao);
+
+  const GLuint VERTEX_ATTR_POSITION = 0;
+  const GLuint VERTEX_ATTR_NORMAL = 1;
+  const GLuint VERTEX_ATTR_TEXTURE = 2;
+  glEnableVertexAttribArray(VERTEX_ATTR_POSITION);
+  glEnableVertexAttribArray(VERTEX_ATTR_NORMAL);
+  glEnableVertexAttribArray(VERTEX_ATTR_TEXTURE);
+
+   // Generate VBO
+  GLuint vbo;
+  glGenBuffers(1, &vbo);
+
+  // Bind VBO to VAO
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+  // Insert Data
+  glBufferData(
+      GL_ARRAY_BUFFER,
+      data.size() * sizeof(ShapeVertex),
+      &data[0],
+      GL_DYNAMIC_DRAW
+  );
+
+  // Generate IBO
+  GLuint ibo;
+  glGenBuffers(1, &ibo);
+
+  // Bind IBO to VAO
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indexes.size() * sizeof(GLuint), &indexes[0], GL_STATIC_DRAW);
+
+  //Specify vertex attributes
+  glVertexAttribPointer(
+      VERTEX_ATTR_POSITION,
+      3,
+      GL_FLOAT,
+      GL_FALSE,
+      sizeof(ShapeVertex),
+      (const GLvoid*)(offsetof(ShapeVertex, position))
+  );
+
+  glVertexAttribPointer(
+      VERTEX_ATTR_NORMAL,
+      3,
+      GL_FLOAT,
+      GL_FALSE,
+      sizeof(ShapeVertex),
+      (const GLvoid*)(offsetof(ShapeVertex, normal))
+  );
+
+  glVertexAttribPointer(
+      VERTEX_ATTR_TEXTURE,
+      2,
+      GL_FLOAT,
+      GL_FALSE,
+      sizeof(ShapeVertex),
+      (const GLvoid*)(offsetof(ShapeVertex, texCoords))
+  );
+
+
+  glBindVertexArray(0);
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
   // Lambda function to draw the scene
-  /*const auto drawScene = [&](const Camera &camera) {
+  const auto drawScene = [&](const Camera &camera) {
     glViewport(0, 0, m_nWindowWidth, m_nWindowHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -102,85 +207,23 @@ int ViewerApplication::run()
       glUniform3fv(lightIntensityLocation, 1, glm::value_ptr(lightIntensity));
     }
 
-    // The recursive function that should draw a node
-    // We use a std::function because a simple lambda cannot be recursive
-    const std::function<void(int, const glm::mat4 &)> drawNode =
-        [&](int nodeIdx, const glm::mat4 &parentMatrix) {
-          // TODO The drawNode function
-          const auto &node = model.nodes[nodeIdx];
+    const glm::mat4 modelMatrix(1);
 
-          glm::mat4 modelMatrix = getLocalToWorldMatrix(node, parentMatrix);
+    const glm::mat4 modelViewMatrix = viewMatrix * modelMatrix;
+    const glm::mat4 modelViewProjMatrix = projMatrix * modelViewMatrix;
+    const glm::mat4 normalMatrix = glm::transpose(glm::inverse(modelViewMatrix));
 
-          if(node.mesh >= 0) {
-            const glm::mat4 modelViewMatrix = viewMatrix * modelMatrix;
-            const glm::mat4 modelViewProjMatrix = projMatrix * modelViewMatrix;
-            const glm::mat4 normalMatrix = glm::transpose(glm::inverse(modelViewMatrix));
+    glUniformMatrix4fv(modelViewMatrixLocation, 1, GL_FALSE, glm::value_ptr(modelViewMatrix));
+    glUniformMatrix4fv(modelViewProjMatrixLocation, 1, GL_FALSE, glm::value_ptr(modelViewProjMatrix));
+    glUniformMatrix4fv(normalMatrixLocation, 1, GL_FALSE, glm::value_ptr(normalMatrix));
 
-            glUniformMatrix4fv(modelViewMatrixLocation, 1, GL_FALSE, glm::value_ptr(modelViewMatrix));
-            glUniformMatrix4fv(modelViewProjMatrixLocation, 1, GL_FALSE, glm::value_ptr(modelViewProjMatrix));
-            glUniformMatrix4fv(normalMatrixLocation, 1, GL_FALSE, glm::value_ptr(normalMatrix));
+    glBindVertexArray(vao);
 
-            const auto &mesh = model.meshes[node.mesh];
-            const auto &vaoRange = meshIndexToVaoRange[node.mesh];
+    glDrawElements(GL_TRIANGLES, indexes.size(), GL_UNSIGNED_INT, 0);
 
-            for(size_t primitiveIdx = 0; primitiveIdx < mesh.primitives.size(); ++primitiveIdx) {
-              const auto &primitive = mesh.primitives[primitiveIdx];
-              bindMaterial(primitive.material);
-              
-              const GLuint vao = vertexArrayObjects[vaoRange.begin + primitiveIdx];
+    glBindVertexArray(0);
 
-              glBindVertexArray(vao);
-
-              if(primitive.indices >= 0) {
-                const auto &accessor = model.accessors[primitive.indices];
-                const auto &bufferView = model.bufferViews[accessor.bufferView];
-                const auto byteOffset = bufferView.byteOffset + accessor.byteOffset;
-
-                glDrawElements(primitive.mode, GLsizei(accessor.count), accessor.componentType,(const GLvoid*)byteOffset);
-              } else {
-                const auto accessorIdx = (*begin(primitive.attributes)).second;
-                const auto &accessor = model.accessors[accessorIdx];
-                glDrawArrays(primitive.mode, 0, GLsizei(accessor.count));
-              }
-            }
-            glBindVertexArray(0);
-          }
-
-          // Draw children
-          for (const auto childNodeIdx : node.children) {
-            drawNode(childNodeIdx, modelMatrix);
-          }
-        };
-
-    // Draw the scene referenced by gltf file
-    if (model.defaultScene >= 0) {
-      // TODO Draw all nodes
-      for(const auto nodeIdx : model.scenes[model.defaultScene].nodes) {
-        drawNode(nodeIdx, glm::mat4(1));
-      }
-    }
   };
-
-  // Render to image output
-  if(!m_OutputPath.empty()) {
-    const int numComponents = 3;
-    std::vector<unsigned char> pixels(m_nWindowWidth * m_nWindowHeight * numComponents);
-    renderToImage(m_nWindowWidth, m_nWindowHeight, numComponents, pixels.data(), [&]() {
-      drawScene(cameraController->getCamera());
-    });
-    flipImageYAxis(m_nWindowWidth, m_nWindowHeight, numComponents, pixels.data());
-    const auto strPath = m_OutputPath.string();
-    stbi_write_png(
-      strPath.c_str(),
-      m_nWindowWidth,
-      m_nWindowHeight,
-      numComponents,
-      pixels.data(),
-      0
-    );
-
-    return 0;
-  }
 
   // Loop until the user closes the window
   for (auto iterationCount = 0u; !m_GLFWHandle.shouldClose();
@@ -274,23 +317,27 @@ int ViewerApplication::run()
 
     m_GLFWHandle.swapBuffers(); // Swap front and back buffers
   }
-*/
+
   // TODO clean up allocated GL data
+  glDeleteBuffers(1, &ibo);
+  glDeleteBuffers(1, &vbo);
+  glDeleteVertexArrays(1, &vao);
 
   return 0;
 }
 
 ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
-    uint32_t height,
+    uint32_t height, uint32_t fWidth, uint32_t fHeight,
     const std::vector<float> &lookatArgs, const std::string &vertexShader,
-    const std::string &fragmentShader, const fs::path &output) :
+    const std::string &fragmentShader) :
     m_nWindowWidth(width),
     m_nWindowHeight(height),
+    m_nClothWidth(fWidth),
+    m_nClothHeight(fHeight),
     m_AppPath{appPath},
     m_AppName{m_AppPath.stem().string()},
     m_ImGuiIniFilename{m_AppName + ".imgui.ini"},
-    m_ShadersRootPath{m_AppPath.parent_path() / "shaders"},
-    m_OutputPath{output}
+    m_ShadersRootPath{m_AppPath.parent_path() / "shaders"}
 {
   if (!lookatArgs.empty()) {
     m_hasUserCamera = true;
