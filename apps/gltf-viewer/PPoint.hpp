@@ -17,10 +17,6 @@ class PPoint
     static void Execute(const float h);
     
     // GETTERS
-    inline const float x() const { return m_xyz.x; };
-    inline const float y() const { return m_xyz.y; };
-    inline const float z() const { return m_xyz.z; };
-    inline const glm::vec3 xyz() const { return m_xyz; };
     inline const glm::vec3 position() const { return m_position; };
     inline const glm::vec3 speed() const { return m_speed; };
     inline const glm::vec3 force() const { return m_force; };
@@ -31,21 +27,20 @@ class PPoint
     virtual void execute(const float h) {
       LeapFrog(h);
     }
+    inline void clearForce() { m_force = glm::vec3(0.); }
 
     void LeapFrog(const float h) {
       m_speed += h * m_force / m_mass;
       m_position += h * m_speed;
-      m_force = glm::vec3(0.);
     }
 
     void EulerExplicit(const float h) {
       m_position += h * m_speed;
       m_speed += h * m_force / m_mass;
-      m_force = glm::vec3(0.);
     }
 
   protected:
-    glm::vec3 m_position, m_speed, m_force, m_xyz;
+    glm::vec3 m_position, m_speed, m_force, m_normal;
     float m_mass;
 };
 

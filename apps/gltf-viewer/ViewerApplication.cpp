@@ -63,6 +63,9 @@ int ViewerApplication::run()
   float gravity = 0.5f;
   const float PHYSICS_SCALE = 1e-5;
 
+  glm::vec3 windAmplitude(0.05f, 0.f, 0.05f);
+  glm::vec3 windFrequency(glm::pi<float>(), 0.f, glm::pi<float>());
+
   glm::vec3 up = glm::vec3(0, 1, 0);
   glm::vec3 eye = glm::vec3(0, 0, 30);
 
@@ -225,25 +228,43 @@ int ViewerApplication::run()
 
   std::vector<PLink> plinks;
 
-  for(size_t i = 0; i < m_nClothWidth - 1; ++i) {
-    for(size_t j = 0; j < m_nClothHeight; ++j) {
-      if(j > 0) { // Diagonal left-bottom corner to right-top corner
-        plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[(i + 1) * m_nClothHeight + j - 1]));
-      }
+  /// Structural Mesh + Diagonal Mesh
+  // For fixed Point
+  for(size_t j = 0; j < m_nClothHeight - 1; ++j) {
+    // Horizontal
+    plinks.push_back(PLink(ppoints[j], ppoints[m_nClothHeight + j]));
+    // Diagonal left-top corner to right-bottom corner
+    plinks.push_back(PLink(ppoints[j], ppoints[m_nClothHeight + j + 1]));
+  }
+
+  // For internal
+  for (size_t i = 1; i < m_nClothWidth - 1; ++i) {
+    for (size_t j = 0; j < m_nClothHeight - 1; ++j) {
       // Horizontal
       plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[(i + 1) * m_nClothHeight + j]));
-
-      if(j >= m_nClothHeight - 1) continue;
-
-      if(i > 0) { // no need for fixed points
-        // Vertical
-        plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[i * m_nClothHeight + j + 1]));
-      }
+      // Verical
+      plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[i * m_nClothHeight + j + 1]));
+      // Diagonal left-bottom corner to right-top corner
+      plinks.push_back(PLink(ppoints[(i - 1) * m_nClothHeight + j + 1], ppoints[i * m_nClothHeight + j]));
       // Diagonal left-top corner to right-bottom corner
       plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[(i + 1) * m_nClothHeight + j + 1]));
     }
   }
 
+  // For extrema
+  for (size_t i = 0; i < m_nClothWidth - 1; ++i) {
+    // Horizontal
+    plinks.push_back(PLink(ppoints[(i + 1) * m_nClothHeight - 1], ppoints[(i + 2) * m_nClothHeight - 1]));
+  }
+  
+  for (size_t j = 0; j < m_nClothHeight - 1; ++j) {
+    // Vertical
+    plinks.push_back(PLink(ppoints[(m_nClothWidth - 1) * m_nClothHeight + j], ppoints[(m_nClothWidth - 1) * m_nClothHeight + j + 1]));
+    // Diagonal left-bottom corner to right-top corner
+    plinks.push_back(PLink(ppoints[(m_nClothWidth - 2) * m_nClothHeight + j + 1], ppoints[(m_nClothWidth - 1) * m_nClothHeight + j]));
+  }
+
+  /// Bridge Mesh
   for(size_t i = 0; i < m_nClothWidth - 2; ++i) {
     for(size_t j = 0; j < m_nClothHeight - 2; ++j) {
 
@@ -263,7 +284,10 @@ int ViewerApplication::run()
   const auto simulateScene = [&](const float h) {
     
     const float fe = 1. / h;
-    
+
+    const glm::vec3 wind = windAmplitude * glm::cos(windFrequency * float(glfwGetTime())) * fe;
+    const glm::vec3 g = glm::vec3(0, -gravity * fe, 0);
+
     PLink::s_k = rigidity * fe * fe;
     PLink::s_z = viscosity * fe;
 
@@ -273,10 +297,65 @@ int ViewerApplication::run()
       plinks[i].execute();
     }
 
+    // For positions
     for(size_t i = 0; i < data.size(); ++i) {
-      ppoints[i]->applyForce(glm::vec3(0, -gravity * fe, 0)); // apply gravity
+      ppoints[i]->applyForce(g + wind); // apply gravity and wind
       ppoints[i]->execute(h);
+      ppoints[i]->clearForce();
       data[i].position = ppoints[i]->position();
+    }
+
+    // For Normals
+    for(size_t i = 0; i < m_nClothWidth; ++i) {
+      for(size_t j = 0; j < m_nClothHeight; ++j) {
+        glm::vec3 sum(0.);
+        float count = 0.f;
+        if(j > 0 && i > 0) { // Top - Left (2 triangles)
+          sum += glm::cross(
+            ppoints[i * m_nClothHeight + j - 1]->position() - ppoints[i * m_nClothHeight + j]->position(),
+            ppoints[(i - 1) * m_nClothHeight + j - 1]->position() - ppoints[i * m_nClothHeight + j]->position()
+          );
+          ++count;
+
+          sum += glm::cross(
+            ppoints[(i - 1) * m_nClothHeight + j - 1]->position() - ppoints[i * m_nClothHeight + j]->position(),
+            ppoints[(i - 1) * m_nClothHeight + j]->position() - ppoints[i * m_nClothHeight + j]->position()
+          );
+          ++count;
+        }
+
+        if(j < m_nClothWidth - 1 && i < m_nClothWidth - 1) { // Bottom - Right (2 triangles)
+          sum += glm::cross(
+            ppoints[(i + 1) * m_nClothHeight + j + 1]->position() - ppoints[i * m_nClothHeight + j]->position(),
+            ppoints[(i + 1) * m_nClothHeight + j]->position() - ppoints[i * m_nClothHeight + j]->position()
+          );
+          ++count;
+
+          sum += glm::cross(
+            ppoints[i * m_nClothHeight + j + 1]->position() - ppoints[i * m_nClothHeight + j]->position(),
+            ppoints[(i + 1) * m_nClothHeight + j + 1]->position() - ppoints[i * m_nClothHeight + j]->position()
+          );
+          ++count;
+        }
+
+        if (j > 0 && i < m_nClothWidth - 1) { // Top - Right
+          sum += glm::cross(
+            ppoints[i * m_nClothHeight + j - 1]->position() - ppoints[i * m_nClothHeight + j]->position(),
+            ppoints[(i + 1) * m_nClothHeight + j]->position() - ppoints[i * m_nClothHeight + j]->position()
+          );
+          ++count;
+        }
+
+        if(i > 0 && j < m_nClothWidth - 1) { // Left - Bottom
+          sum += glm::cross(
+            ppoints[(i - 1) * m_nClothHeight + j]->position() - ppoints[i * m_nClothHeight + j]->position(),
+            ppoints[i * m_nClothHeight + j + 1]->position() - ppoints[i * m_nClothHeight + j]->position()
+          );
+          ++count;
+        }
+
+        data[i * m_nClothHeight + j].normal = glm::normalize(sum / count);
+      }
     }
 
     void* ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
@@ -412,6 +491,14 @@ int ViewerApplication::run()
 
           if (ImGui::SliderFloat("Viscosity", &z, 0.f, 1000.f)) {
             viscosity = z * PHYSICS_SCALE;
+          }
+
+          if(ImGui::SliderFloat3("Wind Amplitude", &windAmplitude.x, 0.f, 5.f)) {
+
+          }
+
+          if(ImGui::SliderFloat3("Wind Frequency", &windFrequency.x, 0.f, 2.f * glm::pi<float>())) {
+
           }
         }
       }

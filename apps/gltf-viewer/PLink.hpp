@@ -27,7 +27,6 @@ class PLink
     static void SpringHook(const PLink &link);
     static void SpringBrake(const PLink &link);
     static void Brake(const PLink &link);
-    static void Execute();
     
     // METHODS
     virtual void execute() { SpringBrake(*this); };
