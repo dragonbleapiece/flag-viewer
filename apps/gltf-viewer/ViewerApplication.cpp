@@ -58,16 +58,16 @@ int ViewerApplication::run()
 
   // GLOBAL
   float mass = 1.f;
-  float viscosity = 0.0008f;
-  float rigidity = 0.00865f;
+  float viscosity = 0.0024f;
+  float rigidity = 0.00965f;
   float gravity = 0.5f;
   const float PHYSICS_SCALE = 1e-5;
 
-  glm::vec3 windAmplitude(0.05f, 0.f, 0.05f);
+  glm::vec3 windAmplitude(0.05f, 0.f, 2.25f);
   glm::vec3 windFrequency(glm::pi<float>(), 0.f, glm::pi<float>());
 
   glm::vec3 up = glm::vec3(0, 1, 0);
-  glm::vec3 eye = glm::vec3(0, 0, 30);
+  glm::vec3 eye = glm::vec3(0, 0, 35);
 
    // Build projection matrix
   auto maxDistance = 100.f;
@@ -109,7 +109,7 @@ int ViewerApplication::run()
       vertex.texCoords.x = float(i) / float(m_nClothWidth);
       vertex.texCoords.y = float(j) / float(m_nClothHeight);
 
-      vertex.normal = glm::vec3(0, 0, 1);
+      vertex.normal = glm::vec3(0, 0, 1); // perpendicular with cloth
       
       vertex.position = glm::vec3(i - float(m_nClothWidth) / 2., j - float(m_nClothHeight) / 2., 0.) * STEP;
 
@@ -361,6 +361,7 @@ int ViewerApplication::run()
     void* ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
     std::memcpy(ptr, &data[0], data.size() * sizeof(ShapeVertex));
     bool done = glUnmapBuffer(GL_ARRAY_BUFFER);
+    assert(done);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
   };
@@ -449,57 +450,57 @@ int ViewerApplication::run()
           cameraController = std::make_unique<FirstPersonCameraController>(m_GLFWHandle.window(), cameraSpeed * maxDistance);
           cameraController->setCamera(camera);
         }
+      }
 
-        if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-          static float theta = 0.0f;
-          static float phi = 0.0f;
-          static bool lightFromCamera = true;
-          ImGui::Checkbox("Light from camera", &lightFromCamera);
-          if (lightFromCamera) {
-            lightDirection = -camera.front();
-          } else {
-            if (ImGui::SliderFloat("Theta", &theta, 0.f, glm::pi<float>()) ||
-                ImGui::SliderFloat("Phi", &phi, 0, 2.f * glm::pi<float>())) {
-              lightDirection = glm::vec3(
-                glm::sin(theta) * glm::cos(phi),
-                glm::cos(theta),
-                glm::sin(theta) * glm::sin(phi)
-              );
-            }
-          }
-
-          static glm::vec3 lightColor(1.f, 1.f, 1.f);
-          static float lightIntensityFactor = 1.f;
-          if (ImGui::ColorEdit3("Light Color", (float *)&lightColor) ||
-              ImGui::SliderFloat("Ligth Intensity", &lightIntensityFactor, 0.f, 10.f)) {
-            lightIntensity = lightColor * lightIntensityFactor;
+      if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static float theta = 0.0f;
+        static float phi = 0.0f;
+        static bool lightFromCamera = true;
+        ImGui::Checkbox("Light from camera", &lightFromCamera);
+        if (lightFromCamera) {
+          lightDirection = -camera.front();
+        } else {
+          if (ImGui::SliderFloat("Theta", &theta, 0.f, glm::pi<float>()) ||
+              ImGui::SliderFloat("Phi", &phi, 0, 2.f * glm::pi<float>())) {
+            lightDirection = glm::vec3(
+              glm::sin(theta) * glm::cos(phi),
+              glm::cos(theta),
+              glm::sin(theta) * glm::sin(phi)
+            );
           }
         }
 
-        if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
-          static float g = gravity * 10.f;
-          static float k = rigidity / PHYSICS_SCALE;
-          static float z = viscosity / PHYSICS_SCALE;
+        static glm::vec3 lightColor(1.f, 1.f, 1.f);
+        static float lightIntensityFactor = 1.f;
+        if (ImGui::ColorEdit3("Light Color", (float *)&lightColor) ||
+            ImGui::SliderFloat("Ligth Intensity", &lightIntensityFactor, 0.f, 10.f)) {
+          lightIntensity = lightColor * lightIntensityFactor;
+        }
+      }
 
-          if (ImGui::SliderFloat("Gravity", &g, 0.f, 10.f)) {
-            gravity = g / 10.f;
-          }
+      if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static float g = gravity * 10.f;
+        static float k = rigidity / PHYSICS_SCALE;
+        static float z = viscosity / PHYSICS_SCALE;
 
-          if (ImGui::SliderFloat("Rigidity", &k, 0.f, 1000.f)) {
-            rigidity = k * PHYSICS_SCALE;
-          }
+        if (ImGui::SliderFloat("Gravity", &g, 0.f, 10.f)) {
+          gravity = g / 10.f;
+        }
 
-          if (ImGui::SliderFloat("Viscosity", &z, 0.f, 1000.f)) {
-            viscosity = z * PHYSICS_SCALE;
-          }
+        if (ImGui::SliderFloat("Rigidity", &k, 0.f, 1000.f)) {
+          rigidity = k * PHYSICS_SCALE;
+        }
 
-          if(ImGui::SliderFloat3("Wind Amplitude", &windAmplitude.x, 0.f, 5.f)) {
+        if (ImGui::SliderFloat("Viscosity", &z, 0.f, 1000.f)) {
+          viscosity = z * PHYSICS_SCALE;
+        }
 
-          }
+        if(ImGui::SliderFloat3("Wind Amplitude", &windAmplitude.x, 0.f, 5.f)) {
+          // VOID
+        }
 
-          if(ImGui::SliderFloat3("Wind Frequency", &windFrequency.x, 0.f, 2.f * glm::pi<float>())) {
-
-          }
+        if(ImGui::SliderFloat3("Wind Frequency", &windFrequency.x, 0.f, 2.f * glm::pi<float>())) {
+          // VOID
         }
       }
       ImGui::End();

@@ -15,13 +15,6 @@ class PLink
     // STATIC ATTRIBUTES
     static float s_k;
     static float s_z;
-    static glm::vec3 s_l;
-
-    enum Functor {
-      SPRING = 0,
-      BRAKE,
-      SPRING_BRAKE
-    };
 
     // STATIC METHODS
     static void SpringHook(const PLink &link);

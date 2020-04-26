@@ -46,11 +46,10 @@ PLink::~PLink() {
 
 float PLink::s_k(0.);
 float PLink::s_z(0.);
-glm::vec3 PLink::s_l(0.);
 
 void PLink::SpringHook(const PLink &link) {
   glm::vec3 d = link.m_p2->position() - link.m_p1->position();
-  glm::vec3 f = (link.m_k + s_k) * (d - link.m_l - s_l); // raideur * allongement
+  glm::vec3 f = (link.m_k + s_k) * (d - link.m_l); // raideur * allongement
   // distrib
   link.m_p1->applyForce(f);
   link.m_p2->applyForce(-f);
