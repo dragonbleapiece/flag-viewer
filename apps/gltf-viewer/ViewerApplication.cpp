@@ -235,8 +235,10 @@ int ViewerApplication::run()
 
       if(j >= m_nClothHeight - 1) continue;
 
-      // Vertical
-      plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[i * m_nClothHeight + j + 1]));
+      if(i > 0) { // no need for fixed points
+        // Vertical
+        plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[i * m_nClothHeight + j + 1]));
+      }
       // Diagonal left-top corner to right-bottom corner
       plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[(i + 1) * m_nClothHeight + j + 1]));
     }
@@ -261,8 +263,7 @@ int ViewerApplication::run()
   const auto simulateScene = [&](const float h) {
     
     const float fe = 1. / h;
-
-    PLink::s_force = glm::vec3(0, -gravity * fe, 0);
+    
     PLink::s_k = rigidity * fe * fe;
     PLink::s_z = viscosity * fe;
 
@@ -273,6 +274,7 @@ int ViewerApplication::run()
     }
 
     for(size_t i = 0; i < data.size(); ++i) {
+      ppoints[i]->applyForce(glm::vec3(0, -gravity * fe, 0)); // apply gravity
       ppoints[i]->execute(h);
       data[i].position = ppoints[i]->position();
     }

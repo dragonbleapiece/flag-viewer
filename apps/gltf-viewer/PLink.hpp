@@ -13,7 +13,6 @@ class PLink
     ~PLink();
 
     // STATIC ATTRIBUTES
-    static glm::vec3 s_force;
     static float s_k;
     static float s_z;
     static glm::vec3 s_l;
