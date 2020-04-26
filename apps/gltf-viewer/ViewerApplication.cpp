@@ -2,6 +2,8 @@
 
 #include <iostream>
 #include <numeric>
+#include <chrono>
+#include <thread>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -9,14 +11,17 @@
 #include <glm/gtx/io.hpp>
 
 #include "utils/cameras.hpp"
-
 #include "utils/images.hpp"
+
+#include "PLink.hpp"
 
 struct ShapeVertex {
     glm::vec3 position;
     glm::vec3 normal;
     glm::vec2 texCoords;
 };
+
+const float FRAMERATE_MILLISECONDS = 1000. / 60.;
 
 void keyCallback(
     GLFWwindow *window, int key, int scancode, int action, int mods)
@@ -51,6 +56,12 @@ int ViewerApplication::run()
   const auto lightIntensityLocation =
       glGetUniformLocation(glslProgram.glId(), "uLightIntensity");
 
+  // GLOBAL
+  float mass = 1.f;
+  float viscosity = 0.0008f;
+  float rigidity = 0.00865f;
+  float gravity = 0.5f;
+  const float PHYSICS_SCALE = 1e-5;
 
   glm::vec3 up = glm::vec3(0, 1, 0);
   glm::vec3 eye = glm::vec3(0, 0, 30);
@@ -98,7 +109,7 @@ int ViewerApplication::run()
       vertex.normal = glm::vec3(0, 0, 1);
       
       vertex.position = glm::vec3(i - float(m_nClothWidth) / 2., j - float(m_nClothHeight) / 2., 0.) * STEP;
-      
+
       data.push_back(vertex);
     }
   }
@@ -189,6 +200,89 @@ int ViewerApplication::run()
   glBindVertexArray(0);
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+  // PHYSICS
+
+  std::vector<std::shared_ptr<PPoint>> ppoints;
+
+  // Immovible extremity
+  for(size_t i = 0; i < m_nClothHeight; ++i) {
+    PFixedPoint pfpoint(data[i].position, 0.);
+    ppoints.push_back(std::make_shared<PFixedPoint>(pfpoint));
+  }
+
+  // Inside
+  for(size_t i = m_nClothHeight; i < data.size() - m_nClothHeight; ++i) {
+    PPoint ppoint(data[i].position, mass);
+    ppoints.push_back(std::make_shared<PPoint>(ppoint));
+  }
+
+  // Extremity
+  for(size_t i = data.size() - m_nClothHeight; i < data.size(); ++i) {
+    PPoint ppoint(data[i].position, mass * 0.9);
+    ppoints.push_back(std::make_shared<PPoint>(ppoint));
+  }
+
+  std::vector<PLink> plinks;
+
+  for(size_t i = 0; i < m_nClothWidth - 1; ++i) {
+    for(size_t j = 0; j < m_nClothHeight; ++j) {
+      if(j > 0) { // Diagonal left-bottom corner to right-top corner
+        plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[(i + 1) * m_nClothHeight + j - 1]));
+      }
+      // Horizontal
+      plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[(i + 1) * m_nClothHeight + j]));
+
+      if(j >= m_nClothHeight - 1) continue;
+
+      // Vertical
+      plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[i * m_nClothHeight + j + 1]));
+      // Diagonal left-top corner to right-bottom corner
+      plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[(i + 1) * m_nClothHeight + j + 1]));
+    }
+  }
+
+  for(size_t i = 0; i < m_nClothWidth - 2; ++i) {
+    for(size_t j = 0; j < m_nClothHeight - 2; ++j) {
+
+      if(i > 0) { // no need for fixed points
+        // Vertical Bridge
+        plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[i * m_nClothHeight + j + 2]));
+      }
+
+      // Horizontal Bridge
+      plinks.push_back(PLink(ppoints[i * m_nClothHeight + j], ppoints[(i + 2) * m_nClothHeight + j]));
+      
+    }
+  }
+  
+
+  // Lambda function to simulate physics
+  const auto simulateScene = [&](const float h) {
+    
+    const float fe = 1. / h;
+
+    PLink::s_force = glm::vec3(0, -gravity * fe, 0);
+    PLink::s_k = rigidity * fe * fe;
+    PLink::s_z = viscosity * fe;
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    for(size_t i = 0; i < plinks.size(); ++i) {
+      plinks[i].execute();
+    }
+
+    for(size_t i = 0; i < data.size(); ++i) {
+      ppoints[i]->execute(h);
+      data[i].position = ppoints[i]->position();
+    }
+
+    void* ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+    std::memcpy(ptr, &data[0], data.size() * sizeof(ShapeVertex));
+    bool done = glUnmapBuffer(GL_ARRAY_BUFFER);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+  };
 
   // Lambda function to draw the scene
   const auto drawScene = [&](const Camera &camera) {
@@ -300,6 +394,24 @@ int ViewerApplication::run()
             lightIntensity = lightColor * lightIntensityFactor;
           }
         }
+
+        if (ImGui::CollapsingHeader("Physics", ImGuiTreeNodeFlags_DefaultOpen)) {
+          static float g = gravity * 10.f;
+          static float k = rigidity / PHYSICS_SCALE;
+          static float z = viscosity / PHYSICS_SCALE;
+
+          if (ImGui::SliderFloat("Gravity", &g, 0.f, 10.f)) {
+            gravity = g / 10.f;
+          }
+
+          if (ImGui::SliderFloat("Rigidity", &k, 0.f, 1000.f)) {
+            rigidity = k * PHYSICS_SCALE;
+          }
+
+          if (ImGui::SliderFloat("Viscosity", &z, 0.f, 1000.f)) {
+            viscosity = z * PHYSICS_SCALE;
+          }
+        }
       }
       ImGui::End();
     }
@@ -308,14 +420,23 @@ int ViewerApplication::run()
 
     glfwPollEvents(); // Poll for and process events
 
-    auto ellapsedTime = glfwGetTime() - seconds;
+    // For Physics rendering
+    simulateScene(glfwGetTime() - seconds);
+
+    auto elapsedTime = glfwGetTime() - seconds;
     auto guiHasFocus =
         ImGui::GetIO().WantCaptureMouse || ImGui::GetIO().WantCaptureKeyboard;
     if (!guiHasFocus) {
-      cameraController->update(float(ellapsedTime));
+      cameraController->update(float(elapsedTime));
     }
 
     m_GLFWHandle.swapBuffers(); // Swap front and back buffers
+  
+    // Regulate FPS
+    if (elapsedTime < FRAMERATE_MILLISECONDS) {
+      std::this_thread::sleep_for(std::chrono::duration<float, std::milli>(FRAMERATE_MILLISECONDS - elapsedTime * 1000.f));
+    }
+  
   }
 
   // TODO clean up allocated GL data
