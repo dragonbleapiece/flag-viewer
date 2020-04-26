@@ -40,7 +40,7 @@ class PPoint
     }
 
   protected:
-    glm::vec3 m_position, m_speed, m_force, m_normal;
+    glm::vec3 m_position, m_speed, m_force;
     float m_mass;
 };
 

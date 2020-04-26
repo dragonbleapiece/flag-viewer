@@ -4,8 +4,7 @@ PPoint::PPoint(const glm::vec3 &xyz, const float mass)
 : m_position(xyz),
   m_speed(0, 0, 0),
   m_force(0, 0, 0),
-  m_mass(mass),
-  m_normal(0, 0, 1)
+  m_mass(mass)
 {
 
 }
